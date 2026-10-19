@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: Arial, sans-serif;
+      color: #eef4ff;
+      background: linear-gradient(135deg, #10243c, #245b78);
+    }
+
+    .dashboard {
+      width: min(100%, 620px);
+      padding: 32px;
+      border: 1px solid #ffffff30;
+      border-radius: 22px;
+      background: #ffffff12;
+      box-shadow: 0 20px 60px #0003;
+      backdrop-filter: blur(12px);
+    }
+
+    h1 { margin: 0 0 8px; }
+    .subtitle { margin: 0 0 24px; color: #d0deee; }
+
+    form {
+      display: flex;
+      gap: 10px;
+    }
+
+    input, button {
+      min-height: 48px;
+      border: 0;
+      border-radius: 10px;
+      font-size: 1rem;
+    }
+
+    input {
+      flex: 1;
+      min-width: 0;
+      padding: 0 14px;
+      color: #172b3c;
+    }
+
+    button {
+      padding: 0 18px;
+      color: white;
+      background: #1677c8;
+      cursor: pointer;
+    }
+
+    button:hover { background: #0f66ad; }
+    button:disabled { opacity: 0.65; cursor: wait; }
+
+    #message {
+      min-height: 24px;
+      margin: 16px 0 8px;
+      color: #ffe0a3;
+    }
+
+    #weather { display: none; }
+
+    .location {
+      margin: 16px 0 4px;
+      font-size: 1.35rem;
+    }
+
+    .condition { margin: 0 0 22px; color: #d0deee; }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .metric {
+      padding: 18px 12px;
+      border-radius: 14px;
+      background: #ffffff17;
+      text-align: center;
+    }
+
+    .metric span {
+      display: block;
+      margin-bottom: 8px;
+      color: #d0deee;
+      font-size: 0.9rem;
+    }
+
+    .metric strong { font-size: 1.2rem; }
+
+    .updated {
+      margin: 18px 0 0;
+      color: #d0deee;
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 480px) {
+      .dashboard { padding: 22px; }
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="dashboard">
+    <h1>Weather Dashboard</h1>
+    <p class="subtitle">Search for a city to see its current weather.</p>
+
+    <form id="search-form">
+      <input
+        id="city-input"
+        type="text"
+        placeholder="For example: Chennai"
+        aria-label="City name"
+        required
+      />
+      <button id="search-button" type="submit">Search</button>
+    </form>
+
+    <p id="message" role="status" aria-live="polite"></p>
+
+    <section id="weather" aria-live="polite">
+      <h2 class="location" id="location"></h2>
+      <p class="condition" id="condition"></p>
+
+      <div class="metrics">
+        <div class="metric">
+          <span>Temperature</span>
+          <strong id="temperature">—</strong>
+        </div>
+        <div class="metric">
+          <span>Humidity</span>
+          <strong id="humidity">—</strong>
+        </div>
+        <div class="metric">
+          <span>Wind speed</span>
+          <strong id="wind">—</strong>
+        </div>
+      </div>
+
+      <p class="updated" id="updated"></p>
+    </section>
+  </main>
+
+  <script>
+    const form = document.querySelector("#search-form");
+    const cityInput = document.querySelector("#city-input");
+    const searchButton = document.querySelector("#search-button");
+    const message = document.querySelector("#message");
+    const weatherSection = document.querySelector("#weather");
+
+    const weatherDescriptions = {
+      0: "Clear sky",
+      1: "Mainly clear",
+      2: "Partly cloudy",
+      3: "Overcast",
+      45: "Fog",
+      48: "Depositing rime fog",
+      51: "Light drizzle",
+      53: "Moderate drizzle",
+      55: "Dense drizzle",
+      61: "Slight rain",
+      63: "Moderate rain",
+      65: "Heavy rain",
+      71: "Slight snow",
+      73: "Moderate snow",
+      75: "Heavy snow",
+      80: "Rain showers",
+      81: "Moderate rain showers",
+      82: "Violent rain showers",
+      95: "Thunderstorm"
+    };
+
+    async function getJSON(url) {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Request failed (${response.status})`);
+      }
+
+      return response.json();
+    }
+
+    async function getWeather(city) {
+      message.textContent = "Loading weather…";
+      weatherSection.style.display = "none";
+      searchButton.disabled = true;
+
+      try {
+        // First, find the city's coordinates.
+        const geoUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
+        geoUrl.search = new URLSearchParams({
+          name: city,
+          count: "1",
+          language: "en",
+          format: "json"
+        });
+
+        const geoData = await getJSON(geoUrl);
+
+        if (!geoData.results || geoData.results.length === 0) {
+          throw new Error("City not found. Check the spelling and try again.");
+        }
+
+        const place = geoData.results[0];
+
+        // Then, fetch weather using the coordinates.
+        const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
+        weatherUrl.search = new URLSearchParams({
+          latitude: place.latitude,
+          longitude: place.longitude,
+          current: "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m",
+          timezone: "auto"
+        });
+
+        const weatherData = await getJSON(weatherUrl);
+        const current = weatherData.current;
+
+        if (!current) {
+          throw new Error("Weather data is unavailable for this city.");
+        }
+
+        // Render nested JSON fields from the API response.
+        document.querySelector("#location").textContent =
+          [place.name, place.admin1, place.country].filter(Boolean).join(", ");
+
+        document.querySelector("#condition").textContent =
+          weatherDescriptions[current.weather_code] ?? "Weather conditions unavailable";
+
+        document.querySelector("#temperature").textContent =
+          `${current.temperature_2m} ${weatherData.current_units.temperature_2m}`;
+
+        document.querySelector("#humidity").textContent =
+          `${current.relative_humidity_2m} ${weatherData.current_units.relative_humidity_2m}`;
+
+        document.querySelector("#wind").textContent =
+          `${current.wind_speed_10m} ${weatherData.current_units.wind_speed_10m}`;
+
+        document.querySelector("#updated").textContent =
+          `Feels like ${current.apparent_temperature}° · Updated ${current.time.replace("T", " ")}`;
+
+        weatherSection.style.display = "block";
+        message.textContent = "";
+      } catch (error) {
+        message.textContent =
+          error instanceof TypeError
+            ? "Network error. Check your internet connection and try again."
+            : error.message || "Something went wrong. Please try again.";
+      } finally {
+        searchButton.disabled = false;
+      }
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const city = cityInput.value.trim();
+
+      if (city) {
+        getWeather(city);
+      }
+    });
+  </script>
+</body>
+</html>
